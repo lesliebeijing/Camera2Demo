@@ -10,6 +10,12 @@
     <SurfaceView
         android:id="@+id/surfaceview"
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="300dp" />
+
+    <cn.lesliefang.camera2demo.BitmapSurfaceView
+        android:id="@+id/bitmapview"
+        android:layout_width="match_parent"
+        android:layout_height="300dp"
+        android:layout_marginTop="20dp" />
 
 </LinearLayout>

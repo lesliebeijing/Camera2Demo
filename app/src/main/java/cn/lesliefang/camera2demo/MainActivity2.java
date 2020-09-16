@@ -4,8 +4,12 @@ import android.Manifest;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.ImageFormat;
+import android.graphics.Rect;
 import android.graphics.SurfaceTexture;
+import android.graphics.YuvImage;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraCharacteristics;
@@ -30,11 +34,8 @@ import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
@@ -50,7 +51,7 @@ public class MainActivity2 extends AppCompatActivity {
     HandlerThread mCameraHandlerThread;
     Handler mCameraHandler;
     Size preViewSize = new Size(1280, 720);
-    boolean hasSave = false;
+    BitmapSurfaceView bitmapSurfaceView;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -62,6 +63,7 @@ public class MainActivity2 extends AppCompatActivity {
         }
 
         mSurfaceView = findViewById(R.id.surfaceview);
+        bitmapSurfaceView = findViewById(R.id.bitmapview);
         mSurfaceView.getHolder().addCallback(new SurfaceHolder.Callback() {
             @Override
             public void surfaceCreated(SurfaceHolder holder) {
@@ -171,7 +173,49 @@ public class MainActivity2 extends AppCompatActivity {
                         /*
                          * 添加一个 ImageReader 作为输出 surface
                          */
-                        final ImageReader imageReader = ImageReader.newInstance(preViewSize.getWidth(), preViewSize.getHeight(), ImageFormat.JPEG, 2);
+//                        final ImageReader imageReader = ImageReader.newInstance(preViewSize.getWidth(), preViewSize.getHeight(), ImageFormat.JPEG, 2);
+//                        imageReader.setOnImageAvailableListener(new ImageReader.OnImageAvailableListener() {
+//                            @Override
+//                            public void onImageAvailable(ImageReader reader) {
+//                                Image image = reader.acquireLatestImage();
+//                                if (image == null) {
+//                                    return;
+//                                }
+//                                Image.Plane[] planes = image.getPlanes();
+//                                for (int i = 0; i < planes.length; i++) {
+//                                    Image.Plane plane = planes[i];
+//                                    Log.d("leslie", "plan " + i);
+//                                    ByteBuffer buffer = plane.getBuffer();
+//                                    int pixelStride = plane.getPixelStride();
+//                                    int rowStride = plane.getRowStride();
+//                                    Log.d("leslie", "buffer size:" + buffer.remaining() + " rowStride:" + rowStride + " pixelStride:" + pixelStride);
+//                                    // JPEG 是压缩图片格式所以只有一个 buffer, 直接保存为文件就行了  rowStride=0 pixelStride=0
+//
+//                                    // 保存一张图片到 SD 卡, 注意写权限。
+//                                    // 图片方向不对，需要旋转处理。相机出来的图片是横向的。
+//                                    if (!hasSave) {
+//                                        hasSave = true;
+//                                        File dir = getExternalFilesDir(null);
+//                                        File imageFile = new File(dir, "image.jpeg");
+//                                        try {
+//                                            OutputStream outputStream = new FileOutputStream(imageFile);
+//                                            byte[] data = new byte[buffer.remaining()];
+//                                            buffer.get(data);
+//                                            outputStream.write(data);
+//                                            outputStream.close();
+//                                            Log.d("leslie", "save image at path " + imageFile.getAbsolutePath());
+//                                        } catch (FileNotFoundException e) {
+//                                            e.printStackTrace();
+//                                        } catch (IOException e) {
+//                                            e.printStackTrace();
+//                                        }
+//                                    }
+//                                }
+//                                image.close();
+//                            }
+//                        }, mCameraHandler);
+
+                        final ImageReader imageReader = ImageReader.newInstance(preViewSize.getWidth(), preViewSize.getHeight(), ImageFormat.YUV_420_888, 2);
                         imageReader.setOnImageAvailableListener(new ImageReader.OnImageAvailableListener() {
                             @Override
                             public void onImageAvailable(ImageReader reader) {
@@ -179,34 +223,61 @@ public class MainActivity2 extends AppCompatActivity {
                                 if (image == null) {
                                     return;
                                 }
-                                Image.Plane[] planes = image.getPlanes();
-                                for (int i = 0; i < planes.length; i++) {
-                                    Image.Plane plane = planes[i];
-                                    Log.d("leslie", "plan " + i);
-                                    ByteBuffer buffer = plane.getBuffer();
-                                    int pixelStride = plane.getPixelStride();
-                                    int rowStride = plane.getRowStride();
-                                    Log.d("leslie", "buffer size:" + buffer.remaining() + " rowStride:" + rowStride + " pixelStride:" + pixelStride);
-                                    // JPEG 是压缩图片格式所以只有一个 buffer, 直接保存为文件就行了  rowStride=0 pixelStride=0
 
-                                    // 保存一张图片到 SD 卡, 注意写权限。
-                                    // 图片方向不对，需要旋转处理。相机出来的图片是横向的。
-                                    if (!hasSave) {
-                                        hasSave = true;
-                                        File dir = getExternalFilesDir(null);
-                                        File imageFile = new File(dir, "image.jpeg");
-                                        try {
-                                            OutputStream outputStream = new FileOutputStream(imageFile);
-                                            byte[] data = new byte[buffer.remaining()];
-                                            buffer.get(data);
-                                            outputStream.write(data);
-                                            outputStream.close();
-                                            Log.d("leslie", "save image at path " + imageFile.getAbsolutePath());
-                                        } catch (FileNotFoundException e) {
-                                            e.printStackTrace();
-                                        } catch (IOException e) {
-                                            e.printStackTrace();
+                                int width = image.getWidth();
+                                int height = image.getHeight();
+
+                                Image.Plane[] planes = image.getPlanes();
+                                Image.Plane yPlane = planes[0];
+                                ByteBuffer yBuffer = yPlane.getBuffer();
+                                Image.Plane uPlane = planes[1];
+                                ByteBuffer uBuffer = uPlane.getBuffer();
+                                Image.Plane vPlane = planes[2];
+                                ByteBuffer vBuffer = vPlane.getBuffer();
+
+                                byte[] yData = new byte[width * height];
+                                yBuffer.get(yData);
+                                byte[] uData = new byte[width * height / 2 - 1];
+                                uBuffer.get(uData);
+                                byte[] vData = new byte[width * height / 2 - 1];
+                                vBuffer.get(vData);
+
+                                if (uPlane.getPixelStride() == 1) {
+                                    // y u v 之间间隔都是1，像这样  YYYYYYYYUUVV， 转 I420 最方便
+                                    byte[] i420Data = new byte[width * height * 3 / 2];
+                                    System.arraycopy(yData, 0, i420Data, 0, yData.length); // Y 直接拷贝
+                                    System.arraycopy(uData, 0, i420Data, yData.length, uData.length); // 拷贝U
+                                    System.arraycopy(vData, 0, i420Data, yData.length + uData.length + 1, vData.length); // 拷贝V
+                                } else if (uPlane.getPixelStride() == 2) {
+                                    // I/GRALLOC: LockFlexLayout: baseFormat: 11, yStride: 1280, ySize: 921600, uOffset: 921600,  uStride: 1280
+                                    // ********* plan 0
+                                    // buffer size:921600 rowStride:1280 pixelStride:1
+                                    // ********* plan 1
+                                    // buffer size:460799 rowStride:1280 pixelStride:2
+                                    // ********* plan 2
+                                    // buffer size:460799 rowStride:1280 pixelStride:2
+
+                                    // U和U， V和V PixelStride 等于2, U 每行下标  0 2 4 6 取到 U， V 同理。
+                                    // 这里转 NV21  :  YYYYYYYYVUVU
+                                    byte[] nv21Data = new byte[width * height * 3 / 2];
+                                    System.arraycopy(yData, 0, nv21Data, 0, yData.length); // Y 直接拷贝
+                                    for (int i = 0; i < uData.length; i = i + 2) {
+                                        nv21Data[yData.length + i] = vData[i]; // 0 2 4 6 下标先取  V
+                                        nv21Data[yData.length + i + 1] = uData[i]; // 0 2 4 6 下标再取 U
+                                    }
+
+                                    try {
+                                        // 转Bitmap
+                                        YuvImage yuvImage = new YuvImage(nv21Data, ImageFormat.NV21, width, height, null);
+                                        ByteArrayOutputStream stream = new ByteArrayOutputStream();
+                                        yuvImage.compressToJpeg(new Rect(0, 0, width, height), 80, stream);
+                                        Bitmap bitmap = BitmapFactory.decodeByteArray(stream.toByteArray(), 0, stream.size());
+                                        stream.close();
+                                        if (bitmap != null) {
+                                            bitmapSurfaceView.drawBitmap(bitmap);
                                         }
+                                    } catch (IOException e) {
+                                        e.printStackTrace();
                                     }
                                 }
                                 image.close();
